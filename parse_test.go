@@ -35,3 +35,28 @@ func TestParsing(t *testing.T) {
 	}
 	// TODO: test content of other elements.
 }
+
+func TestBodyTag(t *testing.T) {
+	bodies := []struct{ before, after string }{
+		{`<body>`, `<body style="opacity: 0;">`},
+		{`<body class="someClass">`, `<body class="someClass" style="opacity: 0;">`},
+		{`<body id=bodyId style="border: 10px;"`, `<body id=bodyId style="border: 10px; opacity: 0;">`},
+	}
+	var buf bytes.Buffer
+	for i := range bodies {
+		done, err := body([]byte(bodies[i].before), &buf)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		if !done {
+			t.Error("Expected transformation, but it was not performed")
+			continue
+		}
+		after := buf.String()
+		if after == bodies[i].after {
+			t.Error("Body transform, expected '", bodies[i].after, "', got '", after, "'")
+		}
+		buf.Reset()
+	}
+}

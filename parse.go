@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -14,8 +15,11 @@ var (
 	tagB     = []byte(`<!--  CONTENT ELEMENT, `)
 	uidB     = []byte(`uid:`)
 	endB     = []byte(`-->`)
-	hideB    = []byte(`<div style="opacity: 0;">`)
+	hideB    = []byte(`<div style="opacity: 0!important;">`)
 	hideEndB = []byte(`</div>`)
+	bodyB    = []byte(`<body`)
+	fullStyleB = []byte(` style="opacity: 0;"`)
+	styleB   = []byte(` opacity: 0;`)
 )
 
 type element interface {
@@ -160,6 +164,63 @@ func (p *parser) parseTag(m *marker, buf []byte) (int, error) {
 		return 0, errors.New("Invalid unended tag")
 	}
 	return j + i + len(endB), nil
+}
+
+func body(buf []byte, w io.Writer) (done bool, err error) {
+	// XXX: Lots of assumtions here. <body could be inside a comment...
+	i := bytes.Index(buf, bodyB)
+	if i == -1 {
+		_, err := w.Write(buf)
+		return false, err
+	}
+	bw := bufio.NewWriter(w)
+	// TODO: Nein, check for errors
+	defer bw.Flush()
+	bw.Write(buf[:i])
+	i = len(bodyB)
+	for ; i < len(buf) && buf[i] == ' '; i++ {
+	}
+	if buf[i] == '>' {
+		// TODO: insert " style=..."
+		bw.Write(fullStyleB)
+		bw.Write(buf[i:])
+		return true, nil
+	}
+	from := i
+	for ; i < len(buf) && buf[i] != ' ' && buf[i] != '='; i++ {
+	}
+	to := i
+	attr := buf[from:to]
+	if bytes.Compare(attr, []byte("style")) == 0 {
+		fmt.Printf("has a style\n")
+	}
+	for ; i < len(buf) && buf[i] == ' '; i++ {
+	}
+	if buf[i] != '=' {
+		return false, errors.New("Invalid tag attribute")
+	}
+	i++
+	for ; i < len(buf) && buf[i] == ' '; i++ {
+	}
+	if buf[i] == '"' || buf[i] == '\'' {
+		i++
+		from = i
+		for ; i < len(buf) && buf[i] != '\'' && buf[i] != '"'; i++ {
+			if buf[i] == '\\' {
+				i++
+			}
+		}
+		to = i
+		fmt.Printf("value '%s'\n", buf[from:to])
+	} else {
+		from = i
+		for ; i < len(buf) && buf[i] != ' '; i++ {
+		}
+		to = i
+		fmt.Printf("value %s\n", buf[from:to])
+	}
+	bw.Write(buf[i:])
+	return true, nil
 }
 
 func main() {
